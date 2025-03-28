@@ -1,0 +1,34 @@
+INFO:main:Upload directory set to: uploads
+INFO:main:Groq API key loaded successfully
+INFO:main:API endpoint set to: https://api.groq.com/openai/v1/chat/completions
+ERROR:fastapi:Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+INFO:main:Upload directory set to: uploads
+INFO:main:Groq API key loaded successfully
+INFO:main:API endpoint set to: https://api.groq.com/openai/v1/chat/completions
+INFO:main:Starting analyze-resume operation
+INFO:main:Received file: Resume.pdf
+INFO:main:Saving file to: uploads\Resume.pdf
+INFO:main:File saved successfully
+INFO:main:Attempting to extract text from PDF: uploads\Resume.pdf
+INFO:main:Successfully extracted 2003 characters from PDF
+INFO:main:Sending request to Groq API...
+2025-03-28 18:35:32,115 - fastapi - ERROR - Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+2025-03-28 18:35:37,917 - fastapi - ERROR - Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+2025-03-28 19:44:52,379 - main - INFO - Sending request to AI API...
+2025-03-28 19:44:54,578 - main - INFO - Received response from AI API
+2025-03-28 19:44:54,578 - main - INFO - Successfully analyzed 1 resumes
+2025-03-28 19:53:36,337 - main - INFO - Sending request to AI API...
+2025-03-28 19:53:38,185 - main - INFO - Received response from AI API
+2025-03-28 19:53:38,185 - main - INFO - Successfully analyzed 2 resumes
