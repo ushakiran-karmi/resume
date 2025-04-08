@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Optional
 import os
 import shutil
@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import uuid
 from dotenv import load_dotenv
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -62,9 +63,18 @@ if not AI_API_KEY:
 API_ENDPOINT = os.getenv("API_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
 
 # Response Models
+class Candidate(BaseModel):
+    filename: str
+    ranking: int
+    suitability_score: int
+    strengths: List[str]
+    weaknesses: List[str]
+    summary: str
+    recommendation: str
+
 class AnalysisResponse(BaseModel):
     success: bool
-    analysis: str
+    candidates: List[Candidate]
     request_id: str
     timestamp: str
     processed_files: int
@@ -84,7 +94,6 @@ def get_timestamp() -> str:
     return datetime.now().isoformat()
 
 def validate_file(file: UploadFile) -> None:
-    """Validate file size and type"""
     if file.content_type not in ALLOWED_FILE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -102,7 +111,6 @@ def validate_file(file: UploadFile) -> None:
         )
 
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extract text from PDF using PyMuPDF"""
     try:
         doc = fitz.open(pdf_path)
         text = "".join([page.get_text() for page in doc])
@@ -116,7 +124,6 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         )
 
 def analyze_with_ai(prompt: str) -> str:
-    """Send analysis request to AI API"""
     headers = {
         "Authorization": f"Bearer {AI_API_KEY}",
         "Content-Type": "application/json",
@@ -166,12 +173,10 @@ async def analyze_resumes(
     files: List[UploadFile] = File(...),
     description: str = Form(...)):
     
-    """Analyze multiple resumes against a job description"""
     request_id = generate_request_id()
     timestamp = get_timestamp()
     
     try:
-        # Validate input
         if not files:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -184,54 +189,60 @@ async def analyze_resumes(
                 detail="Job description cannot be empty"
             )
 
-        # Process files
         resume_data = []
         for file in files:
             validate_file(file)
-            
             unique_filename = f"{uuid.uuid4()}_{file.filename}"
             file_path = os.path.join(UPLOAD_DIR, unique_filename)
             
             try:
-                # Save file temporarily
                 with open(file_path, "wb") as buffer:
                     shutil.copyfileobj(file.file, buffer)
-                
-                # Extract text
                 resume_text = extract_text_from_pdf(file_path)
                 resume_data.append({
                     "filename": file.filename,
                     "content": resume_text
                 })
-                
             finally:
-                # Clean up temp file
                 if os.path.exists(file_path):
                     os.remove(file_path)
 
-        # Prepare analysis prompt
+        # Structured prompt
         prompt = f"""
-        Analyze these resumes against the job description and provide:
-        1. Ranking from most to least suitable
-        2. Detailed comparison for each candidate
-        3. Key strengths and weaknesses
-        4. Recommend which candidates are the best fit
-        
-        Job Description:
-        {description.strip()}
-        
-        Resumes:
-        {resume_data}
-        """
+You are a resume analysis expert. Analyze the resumes against the job description below.
 
-        # Get AI analysis
-        analysis = analyze_with_ai(prompt)
-        
-        logger.info(f"Successfully analyzed {len(resume_data)} resumes")
-        
+Return a JSON array where each object includes:
+- filename (string)
+- ranking (integer)
+- suitability_score (integer from 0 to 100)
+- strengths (array of strings)
+- weaknesses (array of strings)
+- summary (string)
+- recommendation (string)
+
+Job Description:
+{description.strip()}
+
+Resumes:
+{resume_data}
+
+ONLY return the JSON array without explanation.
+"""
+
+        analysis_text = analyze_with_ai(prompt)
+
+        try:
+            candidates = json.loads(analysis_text)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse AI JSON: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to parse AI response into structured format."
+            )
+
         return {
             "success": True,
-            "analysis": analysis,
+            "candidates": candidates,
             "request_id": request_id,
             "timestamp": timestamp,
             "processed_files": len(resume_data)
@@ -247,3 +258,7 @@ async def analyze_resumes(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
         )
+
+@app.get("/api/download/{filename}")
+def download_file(filename: str):
+    return FileResponse(f"uploads/{filename}", media_type='application/pdf', filename=filename)
